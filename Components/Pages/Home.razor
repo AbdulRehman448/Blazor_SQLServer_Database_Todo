@@ -1,7 +1,391 @@
 ﻿@page "/"
+@layout NullLayout
+@using Microsoft.AspNetCore.Components.Web
+@using Microsoft.EntityFrameworkCore
+@using Greeting_App.Data
+@using Greeting_App.Models
+@inject IDbContextFactory<AppDbContext> DbFactory
+@rendermode InteractiveServer
 
-<PageTitle>Home</PageTitle>
+<PageTitle>Database To-Do App</PageTitle>
 
-<h1>Hello, world!</h1>
+<div class="app-wrapper">
+    <header class="top-navbar">
+        <div class="navbar-container">
+            <div class="navbar-brand">
+                <span class="brand-icon">💾</span>
+                <span class="brand-text">Database To-Do App</span>
+            </div>
+            <nav class="navbar-links">
+                <a href="" class="nav-link active">Home</a>
+            </nav>
+        </div>
+    </header>
 
-Welcome to your new app.
+    <main class="container">
+        <div class="card">
+            <div class="card-header">
+                <h2>Task 8: Enterprise Database Integration</h2>
+                <p class="subtitle">Full local CRUD operations orchestrated using Entity Framework Core SQL pipelines</p>
+            </div>
+
+            <div class="card-body">
+                <div class="input-section">
+                    <div class="input-group">
+                        <label for="taskInput">Commit New Task to DB Database Context:</label>
+                        <div class="input-wrapper">
+                            <input type="text" 
+                                   id="taskInput" 
+                                   @bind="newTaskTitle" 
+                                   @onkeyup="HandleKeyUp"
+                                   placeholder="Type database record description..." 
+                                   class="form-control" />
+                            <button class="btn btn-add" @onclick="CreateTaskAsync">Add Record</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="list-meta">
+                    <h3>Database Records (@todoTasks?.Count)</h3>
+                    @if (todoTasks != null && todoTasks.Any())
+                    {
+                        <button class="btn btn-clear" @onclick="ClearAllTasksAsync">Truncate Table</button>
+                    }
+                </div>
+
+                <div class="tasks-container">
+                    @if (todoTasks == null)
+                    {
+                        <div class="status-box"><span class="loading-text">Querying local relational tables...</span></div>
+                    }
+                    else if (!todoTasks.Any())
+                    {
+                        <div class="empty-box animate-fade-in">
+                            <span class="placeholder-text">⚡ Database Table is Empty. Add a task record sequence above.</span>
+                        </div>
+                    }
+                    else
+                    {
+                        <ul class="task-list">
+                            @foreach (var task in todoTasks)
+                            {
+                                <li class="task-item @(task.IsCompleted ? "completed-state" : "") animate-fade-in">
+                                    <div class="task-content">
+                                        <input type="checkbox" 
+                                               checked="@task.IsCompleted" 
+                                               @onchange="() => ToggleTaskCompletionAsync(task)" 
+                                               class="task-checkbox" />
+                                        <span class="task-text">@task.Title</span>
+                                    </div>
+                                    <button class="btn-delete" @onclick="() => DeleteTaskAsync(task.Id)">✕</button>
+                                </li>
+                            }
+                        </ul>
+                    }
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <footer class="app-footer">
+        <div class="footer-content">
+            <p class="developer-credit">Developed by <span class="dev-name">Abdul Rehman Ali</span></p>
+            <p class="assignment-info">VP Lab Work &bull; Assignment 4 &bull; Task 8</p>
+        </div>
+    </footer>
+</div>
+
+@code {
+    private string newTaskTitle = string.Empty;
+    private List<TodoTask>? todoTasks;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadTasksFromDatabaseAsync();
+    }
+
+    private async Task LoadTasksFromDatabaseAsync()
+    {
+        using var context = await DbFactory.CreateDbContextAsync();
+        // Fetch tasks ordered chronologically from SQL Server instance memory
+        todoTasks = await context.TodoTasks.OrderBy(t => t.CreatedAt).ToListAsync();
+    }
+
+    private async Task CreateTaskAsync()
+    {
+        if (!string.IsNullOrWhiteSpace(newTaskTitle))
+        {
+            using var context = await DbFactory.CreateDbContextAsync();
+            var newTask = new TodoTask { Title = newTaskTitle.Trim(), CreatedAt = DateTime.Now };
+            
+            context.TodoTasks.Add(newTask);
+            await context.SaveChangesAsync(); // Writes transaction out to the server database
+            
+            newTaskTitle = string.Empty;
+            await LoadTasksFromDatabaseAsync(); // Refresh UI grid view arrays binding data
+        }
+    }
+
+    private async Task ToggleTaskCompletionAsync(TodoTask task)
+    {
+        using var context = await DbFactory.CreateDbContextAsync();
+        task.IsCompleted = !task.IsCompleted;
+        
+        context.TodoTasks.Update(task);
+        await context.SaveChangesAsync();
+        await LoadTasksFromDatabaseAsync();
+    }
+
+    private async Task DeleteTaskAsync(int id)
+    {
+        using var context = await DbFactory.CreateDbContextAsync();
+        var targetTask = await context.TodoTasks.FindAsync(id);
+        
+        if (targetTask != null)
+        {
+            context.TodoTasks.Remove(targetTask);
+            await context.SaveChangesAsync();
+            await LoadTasksFromDatabaseAsync();
+        }
+    }
+
+    private async Task ClearAllTasksAsync()
+    {
+        using var context = await DbFactory.CreateDbContextAsync();
+        
+        // Wipe away all record sequences contained inside the targeting dataset table model Context safely
+        context.TodoTasks.RemoveRange(context.TodoTasks);
+        await context.SaveChangesAsync();
+        await LoadTasksFromDatabaseAsync();
+    }
+
+    private async Task HandleKeyUp(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            await CreateTaskAsync();
+        }
+    }
+}
+
+@code {
+    private class NullLayout : LayoutComponentBase 
+    {
+        protected override void BuildRenderTree(Microsoft.AspNetCore.Components.Rendering.RenderTreeBuilder builder)
+        {
+            builder.AddContent(0, Body);
+        }
+    }
+}
+
+<style>
+    /* Global Layout Setup */
+    html, body {
+        margin: 0 !important;
+        padding: 0 !important;
+        background-color: #faf5ff !important; /* Soft Indigo Lilac tint backdrop */
+        color: #1e1b4b;
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+        height: 100%;
+    }
+
+    .app-wrapper {
+        display: flex;
+        flex-direction: column;
+        min-height: 100vh;
+    }
+
+    /* Premium Header (Pushed to Edges) */
+    .top-navbar {
+        background: #ffffff;
+        border-bottom: 1px solid #e9d5ff;
+        position: sticky;
+        top: 0;
+        z-index: 50;
+        width: 100%;
+        box-sizing: border-box;
+    }
+
+    .navbar-container {
+        width: 100%;
+        padding: 0.75rem 2rem;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        box-sizing: border-box;
+    }
+
+    .navbar-brand {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+    }
+
+    .brand-icon { font-size: 1.5rem; }
+
+    .brand-text {
+        font-size: 1.3rem;
+        font-weight: 800;
+        letter-spacing: -0.025em;
+        background: linear-gradient(135deg, #4c1d95, #a855f7); /* Deep Purple Indigo to Orchid Violet */
+        background-clip: text;
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+    }
+
+    .navbar-links .nav-link {
+        color: #4c1d95;
+        text-decoration: none;
+        font-weight: 600;
+        font-size: 0.95rem;
+        padding: 0.5rem 1rem;
+        border-radius: 6px;
+        background-color: rgba(76, 29, 149, 0.06);
+        transition: all 0.2s;
+    }
+
+    .navbar-links .nav-link:hover {
+        background-color: rgba(76, 29, 149, 0.12);
+    }
+
+    /* Content Layout Card Container configuration mapping elements */
+    .container {
+        flex: 1 0 auto;
+        width: 100%;
+        max-width: 750px;
+        margin: 4rem auto;
+        padding: 0 1rem;
+        box-sizing: border-box;
+    }
+
+    .card {
+        background: #ffffff;
+        border-radius: 16px;
+        box-shadow: 0 10px 25px -5px rgba(76, 29, 149, 0.04), 0 8px 10px -6px rgba(76, 29, 149, 0.04);
+        border: 1px solid #f3e8ff;
+        overflow: hidden;
+    }
+
+    .card-header {
+        background: linear-gradient(135deg, #4c1d95, #a855f7);
+        color: white;
+        padding: 2.25rem 2rem;
+    }
+
+    .card-header h2 {
+        margin: 0;
+        font-size: 1.65rem;
+        font-weight: 800;
+        letter-spacing: -0.025em;
+    }
+
+    .subtitle {
+        margin: 0.5rem 0 0 0;
+        opacity: 0.95;
+        font-size: 0.95rem;
+    }
+
+    .card-body { padding: 2.5rem 2rem; }
+
+    /* Interactive Inputs Forms Groups fields structural blocks layouts override */
+    .input-section { margin-bottom: 2.5rem; }
+    .input-group { display: flex; flex-direction: column; gap: 0.5rem; }
+    .input-group label { font-weight: 600; color: #4b5563; font-size: 0.95rem; }
+    .input-wrapper { display: flex; gap: 0.75rem; }
+
+    .form-control {
+        display: block !important;
+        flex: 1;
+        box-sizing: border-box !important;
+        padding: 0.9rem 1.1rem !important;
+        font-size: 1.05rem !important;
+        border: 2px solid #e5e7eb !important;
+        border-radius: 10px !important;
+        transition: all 0.2s ease-in-out;
+        outline: none !important;
+        height: auto !important;
+        background-color: #ffffff !important;
+        color: #1f2937;
+    }
+
+    .form-control:focus {
+        border-color: #a855f7 !important;
+        box-shadow: 0 0 0 4px rgba(168, 85, 247, 0.12) !important;
+    }
+
+    /* Primary Command Actions Elements Controls buttons wrappers */
+    .btn { padding: 0.9rem 1.5rem; font-size: 1rem; font-weight: 600; border: none; border-radius: 10px; cursor: pointer; transition: all 0.15s ease-in-out; }
+    .btn-add { background: #4c1d95; color: white; box-shadow: 0 4px 12px rgba(76, 29, 149, 0.15); }
+    .btn-add:hover { background: #3b0764; }
+    .btn-add:active { transform: scale(0.98); }
+
+    .list-meta { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #f3e8ff; padding-bottom: 0.75rem; margin-bottom: 1.25rem; }
+    .list-meta h3 { margin: 0; font-size: 1.1rem; font-weight: 700; color: #374151; text-transform: uppercase; letter-spacing: 0.05em; }
+    
+    .btn-clear { background-color: #ef4444; color: white; padding: 0.45rem 1rem; font-size: 0.85rem; border-radius: 6px; box-shadow: 0 2px 6px rgba(239, 68, 68, 0.15); }
+    .btn-clear:hover { background-color: #dc2626; }
+
+    /* Dynamic Output Node elements layout wrappers */
+    .tasks-container { min-height: 120px; }
+    .status-box { text-align: center; padding: 2rem; color: #94a3b8; font-style: italic; }
+    .empty-box { background-color: #fafafa; border: 2px dashed #e2e8f0; border-radius: 10px; padding: 2.5rem; text-align: center; }
+    .placeholder-text { color: #94a3b8; font-style: italic; font-size: 1rem; }
+
+    .task-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 0.75rem; }
+    
+    .task-item {
+        background: #ffffff;
+        border: 1px solid #e5e7eb;
+        border-radius: 10px;
+        padding: 1rem 1.25rem;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        transition: all 0.2s ease;
+    }
+
+    .task-item:hover { border-color: #d8b4fe; box-shadow: 0 4px 12px rgba(76, 29, 149, 0.02); }
+    .task-content { display: flex; align-items: center; gap: 1rem; flex: 1; }
+    
+    /* System Native Stylized Task Checkboxes formatting components options */
+    .task-checkbox {
+        width: 1.2rem;
+        height: 1.2rem;
+        accent-color: #a855f7;
+        cursor: pointer;
+    }
+
+    .task-text { color: #334155; font-size: 1.05rem; word-break: break-word; transition: all 0.2s; }
+    
+    /* Interactive cross-out styling triggered automatically when completion state evaluated true */
+    .completed-state { background-color: #f9fafb; border-color: #f3f4f6; }
+    .completed-state .task-text { text-decoration: line-through; color: #9ca3b8; }
+
+    .btn-delete { background: none; border: none; color: #94a3b8; font-size: 1.1rem; cursor: pointer; padding: 0.25rem 0.5rem; border-radius: 4px; transition: all 0.15s ease-in-out; }
+    .btn-delete:hover { color: #ef4444; background-color: #fef2f2; }
+
+    /* Sticky Footer Custom Elements */
+    .app-footer {
+        flex-shrink: 0;
+        background-color: #ffffff;
+        border-top: 1px solid #e9d5ff;
+        padding: 1.5rem 2rem;
+        text-align: center;
+        margin-top: auto;
+        width: 100%;
+        box-sizing: border-box;
+    }
+
+    .footer-content { max-width: 750px; margin: 0 auto; }
+    .developer-credit { margin: 0; font-size: 0.95rem; color: #4c1d95; font-weight: 500; }
+    .dev-name { color: #1e1b4b; font-weight: 700; }
+    .assignment-info { margin: 0.35rem 0 0 0; font-size: 0.8rem; color: #a855f7; text-transform: uppercase; letter-spacing: 0.05em; }
+
+    .animate-fade-in { animation: fadeIn 0.25s ease-out forwards; }
+    
+    /* Escaped animation sequence token handles rendering bugs cleanly */
+    @@keyframes fadeIn {
+        from { opacity: 0; transform: translateY(4px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+</style>
